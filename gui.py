@@ -3,10 +3,8 @@ import downloader
 
 if __name__ == '__main__':
     sg.change_look_and_feel('Dark Blue 3')
-    layout = [[sg.Text("start_url"), sg.Input('', key='start')],
-              [sg.Text('end_url'), sg.Input('', key='end')],
-              [sg.Text('output_filename(optional)'), sg.Input(key='out')],
-              [sg.Text('title_selector(optional)'),sg.Input(key='title'), sg.Text('body_selector(optinal)'), sg.Input(key='body')],
+    layout = [[sg.Text("url1"), sg.Input('', key='url1')],
+              [sg.Text('url2'), sg.Input('', key='url2')],
               [sg.Button('download')]]
 
     window = sg.Window('Web Novel Downloader', layout)
@@ -16,15 +14,14 @@ if __name__ == '__main__':
         if event in (None, 'Cancel'):  
             break
         if event == 'download':
-           
-            out = values['out'] 
-            title = values['title'] 
-            body = values['body'] 
-            start = values['start']
-            end = values['end']
-            downloader.parse(start_url=start, end_url=end, title=title, body=body, out=out)
-            downloader.download()
-            sg.Popup('Download Completed!')
+            urls = []
+            if values['url1']:
+                urls.append(values['url1'])
+            if values['url2']:
+                urls.append(values['url2'])
+            
+            downloader.download(urls)
+            window.close()
 
     window.close()
     

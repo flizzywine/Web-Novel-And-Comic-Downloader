@@ -19,53 +19,72 @@
 
 因此我自己动手, 编写了这个程序, 一个十分简单, 但足够有效的工具. 
 
-本项目提供两个版本的程序, 命令行版本与GUI版本.
-GUI版本供小白使用, 支持Mac与Unix系统. 暂不支持Windows.
+它具有以下功能:
 
+- 自动寻找合适的编码
+
+- 自动添加目录
+
+- 自动提取标题与正文
+
+- 自动为下载的文件命名
+
+  
 
 # Quick Start 
 
-## GUI版
+比如你需要下载 http://www.xiaoshuo/book/10086/100.html到
 
-# ![截屏2019-12-06下午12.39.41](/Users/chenfeng/files/web-novel-downloader/assets/截屏2019-12-06下午12.39.41.png)
-
-在`start_url`和`end_url` 分别输入小说第一章以及最后一章的链接, 点击`download` 即可快速下载, 如无必要, 其他选项可以不填.
-
-Mac APP : [noveldown]()
-
-## 命令行版
-
-
+ http://www.xiaoshuo/book/10086/199.html 的所有页面, 剔除无效信息, 然后合并成一个文件.  那么试试这个.
 
 ```
-python noveldown_terminal.py start_url end_url
+python noveldown.py --urls  http://www.xiaoshuo/book/10086/[100-199].html
 ```
 
-如果需要点击
+有时候仅仅一个URL是不够的, 
+
+比如有一本书的URL分为两个部分 http://xiaoshuo/10088/abcd.html 和http://xiaoshuo/10088/abcd_[2-100].html 显然一个URL是没法满足这个规律的.  那么你就可以输入两个URL, 甚至更多, 不过一定要按照顺序, 下载器可没有能力分辨章节之间的顺序. 
+
+```
+python noveldown.py --urls http://xiaoshuo/10088/abcd.html http://www.xiaoshuo/10089/[2-100].html
+```
+
+
 
 # 配置
 
-由于不同的小说网站有不同的规则和格式, 因此用户需要配置一部分内容.
+在大多数情况下, 你不需要自己动手做出任何配置.
 
-通过 `title` 和`body` 配置章节标题与正文的CSS选择器, 来筛选内容.
+下载器会自己检查当前页面的内容, 做出合理地选项, 但这并不总是成立.
 
-默认 `title` 为第一个h1元素, `body`为id="content"的元素,如果需要修改, 
-可以通过查看网页源代码来寻找, 如下图所示.
+有时候, 你需要自己查看页面源代码, 找到标题与正文被包裹在哪个标签中,
 
-![66FE51ED41BFD5F1EC04692AAAA461D2](/Users/chenfeng/files/web-novel-downloader/assets/66FE51ED41BFD5F1EC04692AAAA461D2.png)
+然后在命令行选项中指定它们, 为此, 你需要一点CSS选择器的知识.
+
+下面是一个示范. 
+
+```
+python noveldown.py --urls xxxx --title 'h1' --body '.content'
+
+```
 
 
 
-# 进一步改进
+![img](file:///Users/chenfeng/files/web-novel-downloader/assets/66FE51ED41BFD5F1EC04692AAAA461D2.png?lastModify=1575634214)
+
+
+
+# 可能的改进
 
 这是一个简陋的下载器, 仅仅用于下载一些中短篇的小说, 还有以下地方可以继续改进.
 
-1. 多线程下载
+1. 多线程下载, 目前的单线程既要下载, 又要处理格式化, 非常慢
 
-2. 异常处理与错误提醒
+2. 在中断之后只能重新下载, 不能继续下载
 
-3. 允许暂停
-
-4. 提取目录
+3. 目前只能提取静态内容, 如果小说是动态加载的话, 就没法下载
 
    
+
+
+
