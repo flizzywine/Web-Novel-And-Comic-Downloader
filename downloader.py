@@ -12,11 +12,46 @@ TITLE_SELECTOR = None
 ADD_DIR = False
 ENCODING = None
 
+
+def get_title_selector(soup):
+    global TITLE_SELECTOR
+    if TITLE_SELECTOR:
+        return
+    candidates = ['h1', 'h2', 'title']
+    def better_title(a):
+        if re.search(r'第.*[章节回卷集]', a[0]):
+            return 0
+        if re.search(r'[0-9]+', a[0]):
+            return 1
+        if re.search(r'[一二三四五六七八九十]+', a[0]):
+            return 1
+        else:
+            return 2
+
+    titles = []
+    try:
+        for candidate in candidates:
+            title = (soup.select(candidate)[0].text, candidate)
+            titles.append(title)
+    except:
+        pass
+    titles.sort(key=better_title)
+    
+    if len(titles) > 0:
+        TITLE_SELECTOR = titles[0][1]
+        return
+
+    raise RuntimeError("No title found, please specify title_selector")
+
+
 def get_body_selector(soup):
     global BODY_SELECTOR
+    if BODY_SELECTOR:
+        return
     for div in soup.find_all('div'):
         try:
             for cls in div['class']:
+                
                 if 'content' in cls or 'text' in cls:
                     BODY_SELECTOR = "."+cls
                     return
@@ -24,14 +59,15 @@ def get_body_selector(soup):
             pass
     for div in soup.find_all('div'):
         try:
-            for id in div['id']:
-                if 'content' in id or 'text' in id:
-                    BODY_SELECTOR = "#"+id
-                    return
+            id = div['id']
+            if 'content' in id or 'text' in id:
+                BODY_SELECTOR = "#"+id
+                return
         except:
             pass
 
     raise RuntimeError("No body text found, please specify body_selector")
+
 
 def init_config(urls):
     global BODY_SELECTOR, OUTPUT_FILENAME, ADD_DIR, TITLE_SELECTOR, ENCODING
@@ -41,28 +77,25 @@ def init_config(urls):
             ENCODING = 'utf-8'
         else:
             ENCODING = 'gbk'
-            
+
         t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
-        
+
         soup = BeautifulSoup(t, 'html.parser')
 
         if OUTPUT_FILENAME is None:
             OUTPUT_FILENAME = soup.select('title')[0].text
-        try:
-            title = soup.select('h1')[0].text
-            TITLE_SELECTOR = 'h1'
-        except:
-            title = soup.select('title')[0].text
-            TITLE_SELECTOR = 'title'
-            
+
+        get_title_selector(soup)
+        title = soup.select(TITLE_SELECTOR)[0].text
         m = re.search("第.*[章回节卷]", title)
         if not m:
             ADD_DIR = True
-            
+
         get_body_selector(soup)
         break
 
-    print(f"configure success.\nout:{OUTPUT_FILENAME}, title:{TITLE_SELECTOR}, body:{BODY_SELECTOR}, dir:{ADD_DIR}, encoding:{ENCODING}")
+    print(
+        f"configure success.\nout:{OUTPUT_FILENAME}, title:{TITLE_SELECTOR}, body:{BODY_SELECTOR}, dir:{ADD_DIR}, encoding:{ENCODING}")
 
 
 def get_content(content_url, i=1):
@@ -75,14 +108,13 @@ def get_content(content_url, i=1):
     t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
 
     soup = BeautifulSoup(t, 'html.parser')
-    
+
     title = soup.select(TITLE_SELECTOR)[0].text
-    
+
     if ADD_DIR:
         title = f"第{i}章 " + title
 
     bodies = soup.select(BODY_SELECTOR)
-    
 
     content = ""
     for part in bodies:
@@ -102,7 +134,7 @@ def download(urls):
                 data = get_content(url, i)
                 print(f'retry get {url}')
             f.write(data)
-            
+
     print('\nDONE')
 
 
@@ -112,7 +144,6 @@ def url_iter(urls):
         if not m:
             yield url
             continue
-        # print(m.group(1), m.group(2))
         start, end = int(m.group(1)), int(m.group(2))
         for i in range(start, end+1):
             url2 = re.sub(r"\[.*\]", str(i), url)
@@ -121,12 +152,15 @@ def url_iter(urls):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--urls", nargs='+', default=[
-                        'https://www.sjks88.com/gudaiyanqing/22247_[85-223].html'])
+    parser.add_argument("--urls", nargs='+',
+                        default=['http://www.17book.vip/1/1305/[558910-558911].html'
+                                                      ])
     parser.add_argument('--body')
     parser.add_argument('--title')
+
     args = parser.parse_args()
-    if args.body :
+    if args.body:
+
         BODY_SELECTOR = args.body
     if args.title:
         TITLE_SELECTOR = args.title
