@@ -1,2 +1,5 @@
 *.txt
 .DS_Store
+__py_cache__
+justtest.py
+*.org

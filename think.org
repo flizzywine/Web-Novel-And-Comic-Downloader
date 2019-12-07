@@ -58,5 +58,7 @@ git checkout 主要是移动, -b是创建加移动
 git brnach 主要是管理, 没有参数就是list, 有参数就是新建, -d就是删除
 
 能不能试试分治法, 下载, 还有, 是开新的进程呢, 还是多线程呢, 多线程其实效率不高
- 
+接下来学习使用git 然后用分治法加快一下程序下载速度 
 
+git 的track到底是什么意思
+upstream ahead behind 
