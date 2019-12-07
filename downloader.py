@@ -153,8 +153,8 @@ def url_iter(urls):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--urls", nargs='+',
-                        default=['http://www.17book.vip/1/1305/[558910-558911].html'
-                                                      ])
+                        # default=['http://www.17book.vip/1/1305/[558910-558911].html']
+                                                      )
     parser.add_argument('--body')
     parser.add_argument('--title')
 
