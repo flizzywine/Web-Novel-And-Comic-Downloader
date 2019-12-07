@@ -70,7 +70,7 @@ python noveldown.py --urls xxxx --title 'h1' --body '.content'
 
 
 
-![img](file:///Users/chenfeng/files/web-novel-downloader/assets/66FE51ED41BFD5F1EC04692AAAA461D2.png?lastModify=1575634214)
+![img](assets/66FE51ED41BFD5F1EC04692AAAA461D2.png?lastModify=1575634214)
 
 
 
