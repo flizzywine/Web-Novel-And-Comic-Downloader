@@ -3,3 +3,5 @@
 __py_cache__
 justtest.py
 *.org
+\*.*\*
+*.jpg

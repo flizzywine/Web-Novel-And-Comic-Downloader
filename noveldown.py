@@ -4,7 +4,7 @@ import sys
 import re
 import os
 import argparse
-
+import time
 
 BODY_SELECTOR = None
 OUTPUT_FILENAME = None
@@ -29,12 +29,12 @@ def get_title_selector(soup):
             return 2
 
     titles = []
-    try:
-        for candidate in candidates:
+    for candidate in candidates:
+        try:
             title = (soup.select(candidate)[0].text, candidate)
             titles.append(title)
-    except:
-        pass
+        except:
+            pass
     titles.sort(key=better_title)
     
     if len(titles) > 0:
@@ -73,6 +73,7 @@ def init_config(urls):
     global BODY_SELECTOR, OUTPUT_FILENAME, ADD_DIR, TITLE_SELECTOR, ENCODING
     for url in url_iter(urls):
         res = requests.get(url, timeout=None)
+        print(res.encoding)
         if res.encoding == 'utf-8':
             ENCODING = 'utf-8'
         else:
@@ -99,14 +100,19 @@ def init_config(urls):
 
 
 def get_content(content_url, i=1):
+    # time.sleep(10)
     global OUTPUT_FILENAME, BODY_SELECTOR
     try:
         res = requests.get(content_url, timeout=5)
+    except KeyboardInterrupt:
+        exit(1)
     except:
         return None
-
-    t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
-
+    try:
+        t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
+    except:
+        t = res.text
+        
     soup = BeautifulSoup(t, 'html.parser')
 
     title = soup.select(TITLE_SELECTOR)[0].text
@@ -151,10 +157,13 @@ def url_iter(urls):
 
 
 if __name__ == '__main__':
+    urls = [
+        "https://www.qihaoqihao.com/15/15543/[2704178-2704182].html "
+    ]
     parser = argparse.ArgumentParser()
     parser.add_argument("--urls", nargs='+',
-                        default=['http://www.17book.vip/1/1305/[558804-558911].html']
-                                                      )
+                        default=urls)
+                                    
     parser.add_argument('--body')
     parser.add_argument('--title')
 
@@ -165,3 +174,7 @@ if __name__ == '__main__':
     if args.title:
         TITLE_SELECTOR = args.title
     download(args.urls)
+
+
+
+
