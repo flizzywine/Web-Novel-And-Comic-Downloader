@@ -8,6 +8,7 @@ logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 TO_DOWNLOAD: List = []
 NOVEL_CONTENT_URL = 'http://www.shuquge.com/txt/293/index.html'
 BOOK_NAME = None
+DECODE = ['gbk', 'utf-8']
 
 def parse_soup_content(soup: BeautifulSoup):
     global TO_DOWNLOAD, BOOK_NAME
@@ -29,12 +30,18 @@ def parse_soup_text(soup):
 
 def get_soup(url):
     r = requests.get(url, timeout=5)
-    r_text = r.text.encode("latin1").decode("utf-8")
+    for decode_method in DECODE:
+        try:
+            r_text = r.text.encode("latin1").decode(decode_method)
+        except UnicodeDecodeError:
+            continue
+        else:
+            break
     soup = BeautifulSoup(r_text, 'html.parser')
     return soup
 
 # 跟漫画不一样，漫画必须分集存放，不然根本没法看， 小说则相反，必须把不同章节整合成一本。
-
+# 不要急着做抽象，不得不抽象时，才抽象，过早优化时万恶之源
 
 
 def download_url(base_url, chapter_url):
@@ -53,6 +60,8 @@ def download_book():
             text = download_url(base_url, chapter_url)
             f.write(title+"\n\n")
             f.write(text)
+
+    logging.info(f"Task {BOOK_NAME} Done!")
 
 download_book()
 
