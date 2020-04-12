@@ -5,3 +5,4 @@ justtest.py
 *.org
 \*.*\*
 *.jpg
+./mypy_cache/*
