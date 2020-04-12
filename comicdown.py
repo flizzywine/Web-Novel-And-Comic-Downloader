@@ -59,7 +59,7 @@ def img_url(page_url):
 
 def download_img(img_url, page_url, dir_num):
     resp = requests.get(img_url)
-    print(f"header {resp.headers}")
+    # print(f"header {resp.headers}")
     img_name = page_url.split("/")[-1].split(".")[0] + ".jpg"
     img_path = os.path.join(comic_name, str(dir_num), img_name)
     with open(img_path, 'wb') as pic:
@@ -72,9 +72,9 @@ def download_img(img_url, page_url, dir_num):
     
 
 
-urls_text = "https://www.caomeng.cc/shaonvmanhua/370/1095_[1-50].html"
+urls_text = "https://www.caomeng.cc/neihanmanhua/370/284_[14-50].html"
 comic_name = "秋色之空"
-DIR_NUM = 5
+DIR_NUM = 2
 SLEEP = 5 
 if __name__ == '__main__':
     
@@ -110,6 +110,6 @@ if __name__ == '__main__':
                 print(f"download fail: {dir_num}/{url_ch}, continue next chapter")
                 break
             except ChunkedEncodingError as e:
-                time.sleep(10)
-                download_img(pic_url, url_ch, dir_num)
-
+                # time.sleep(60)
+                # download_img(pic_url, url_ch, dir_num)
+                raise Exception("reset by peer")

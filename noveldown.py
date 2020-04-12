@@ -1,179 +1,62 @@
 import requests
 from bs4 import BeautifulSoup
-import sys
 import re
-import os
-import argparse
-import time
+from typing import List, Dict
+import logging
+import sys
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+TO_DOWNLOAD: List = []
+NOVEL_CONTENT_URL = 'http://www.shuquge.com/txt/293/index.html'
+BOOK_NAME = None
 
-BODY_SELECTOR = None
-OUTPUT_FILENAME = None
-TITLE_SELECTOR = None
-ADD_DIR = False
-ENCODING = None
-
-
-def get_title_selector(soup):
-    global TITLE_SELECTOR
-    if TITLE_SELECTOR:
-        return
-    candidates = ['h1', 'h2', 'title']
-    def better_title(a):
-        if re.search(r'第.*[章节回卷集]', a[0]):
-            return 0
-        if re.search(r'[0-9]+', a[0]):
-            return 1
-        if re.search(r'[一二三四五六七八九十]+', a[0]):
-            return 1
-        else:
-            return 2
-
-    titles = []
-    for candidate in candidates:
-        try:
-            title = (soup.select(candidate)[0].text, candidate)
-            titles.append(title)
-        except:
-            pass
-    titles.sort(key=better_title)
-    
-    if len(titles) > 0:
-        TITLE_SELECTOR = titles[0][1]
-        return
-
-    raise RuntimeError("No title found, please specify title_selector")
+def parse_soup_content(soup: BeautifulSoup):
+    global TO_DOWNLOAD, BOOK_NAME
+    # soup = BeautifulSoup(f, 'html.parser')
+    BOOK_NAME = soup.find("title").text
+    ele = soup.find("div", class_="listmain")
+    items = ele.find_all("a")
+    for item in items:
+        url = item['href']
+        title = item.text
+        TO_DOWNLOAD.append((url, title))
+        logging.debug(f"append {url},{title}")
 
 
-def get_body_selector(soup):
-    global BODY_SELECTOR
-    if BODY_SELECTOR:
-        return
-    for div in soup.find_all('div'):
-        try:
-            for cls in div['class']:
-                
-                if 'content' in cls or 'text' in cls:
-                    BODY_SELECTOR = "."+cls
-                    return
-        except:
-            pass
-    for div in soup.find_all('div'):
-        try:
-            id = div['id']
-            if 'content' in id or 'text' in id:
-                BODY_SELECTOR = "#"+id
-                return
-        except:
-            pass
+def parse_soup_text(soup):
+    res = soup.find(id=re.compile('content')).text
+    logging.debug(f"download text: {res[0:10]}")
+    return res
 
-    raise RuntimeError("No body text found, please specify body_selector")
+def get_soup(url):
+    r = requests.get(url, timeout=5)
+    r_text = r.text.encode("latin1").decode("utf-8")
+    soup = BeautifulSoup(r_text, 'html.parser')
+    return soup
+
+# 跟漫画不一样，漫画必须分集存放，不然根本没法看， 小说则相反，必须把不同章节整合成一本。
 
 
-def init_config(urls):
-    global BODY_SELECTOR, OUTPUT_FILENAME, ADD_DIR, TITLE_SELECTOR, ENCODING
-    for url in url_iter(urls):
-        res = requests.get(url, timeout=None)
-        print(res.encoding)
-        if res.encoding == 'utf-8':
-            ENCODING = 'utf-8'
-        else:
-            ENCODING = 'gbk'
 
-        t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
-
-        soup = BeautifulSoup(t, 'html.parser')
-
-        if OUTPUT_FILENAME is None:
-            OUTPUT_FILENAME = soup.select('title')[0].text
-
-        get_title_selector(soup)
-        title = soup.select(TITLE_SELECTOR)[0].text
-        m = re.search("第.*[章回节卷]", title)
-        if not m:
-            ADD_DIR = True
-
-        get_body_selector(soup)
-        break
-
-    print(
-        f"configure success.\nout:{OUTPUT_FILENAME}, title:{TITLE_SELECTOR}, body:{BODY_SELECTOR}, dir:{ADD_DIR}, encoding:{ENCODING}")
+def download_url(base_url, chapter_url):
+    url = base_url + "/" + chapter_url 
+    logging.debug(f"dealing {url}")
+    soup = get_soup(url)
+    return parse_soup_text(soup)
 
 
-def get_content(content_url, i=1):
-    # time.sleep(10)
-    global OUTPUT_FILENAME, BODY_SELECTOR
-    try:
-        res = requests.get(content_url, timeout=5)
-    except KeyboardInterrupt:
-        exit(1)
-    except:
-        return None
-    try:
-        t = res.text.encode(res.encoding).decode(ENCODING, 'ignore')
-    except:
-        t = res.text
-        
-    soup = BeautifulSoup(t, 'html.parser')
+def download_book():
+    base_url = "/".join(NOVEL_CONTENT_URL.split("/")[:-1])
+    soup = get_soup(NOVEL_CONTENT_URL)
+    parse_soup_content(soup)
+    with open(BOOK_NAME+".txt", "w") as f:
+        for chapter_url, title in TO_DOWNLOAD:
+            text = download_url(base_url, chapter_url)
+            f.write(title+"\n\n")
+            f.write(text)
 
-    title = soup.select(TITLE_SELECTOR)[0].text
-
-    if ADD_DIR:
-        title = f"第{i}章 " + title
-
-    bodies = soup.select(BODY_SELECTOR)
-
-    content = ""
-    for part in bodies:
-        content += part.text
-
-    both = title + '\n' + content + '\n\n'
-    return both
+download_book()
 
 
-def download(urls):
-    init_config(urls)
-    with open(OUTPUT_FILENAME + '.txt', 'w+') as f:
-        for i, url in enumerate(url_iter(urls), start=1):
-            print(url)
-            data = get_content(url, i)
-            while data is None:
-                data = get_content(url, i)
-                print(f'retry get {url}')
-            f.write(data)
-
-    print('\nDONE')
-
-
-def url_iter(urls):
-    for url in urls:
-        m = re.search(r'\[(.*)\-(.*)\]', url)
-        if not m:
-            yield url
-            continue
-        start, end = int(m.group(1)), int(m.group(2))
-        for i in range(start, end+1):
-            url2 = re.sub(r"\[.*\]", str(i), url)
-            yield url2
-
-
-if __name__ == '__main__':
-    urls = [
-        "https://www.qihaoqihao.com/15/15543/[2704178-2704182].html "
-    ]
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--urls", nargs='+',
-                        default=urls)
-                                    
-    parser.add_argument('--body')
-    parser.add_argument('--title')
-
-    args = parser.parse_args()
-    if args.body:
-
-        BODY_SELECTOR = args.body
-    if args.title:
-        TITLE_SELECTOR = args.title
-    download(args.urls)
 
 
 
