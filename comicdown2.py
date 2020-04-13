@@ -54,13 +54,13 @@ from typing import Dict
 import requests_html
 from requests_html import HTMLSession
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 COMIC_URL = 'https://www.caomeng.cc/neihanmanhua/370.html'
 COMIC_NAME = '默认漫画名'
 ChapterNameTable: Dict[str, str] = dict()
 SLEEP_SEC = 5
-
 session = HTMLSession()
+
 def get_r(url):
     user_agent = random.choice(USER_AGENT_LIST)
     header = {"user-agent": requests_html.user_agent()}
@@ -70,13 +70,16 @@ def get_r(url):
 def get_chapters_url():
     r = get_r(COMIC_URL)
     lanmu = r.html.find("#sortWrap", first=True)
-    titles = [item.attrs['title'] for item in lanmu.find("a")]
+    links_and_titles = [(item.attrs['href'], item.attrs['title']) for item in lanmu.find("a")]
     
-    links = lanmu.absolute_links
-    for link, title in zip(links, titles):
-        ChapterNameTable[link] = title
-    return links
-    
+    abs_links = lanmu.absolute_links
+    for abs_link in abs_links:
+        for link, title in links_and_titles:
+            if abs_link.endswith(link):
+                ChapterNameTable[abs_link] = title
+                break
+
+    return abs_links
 
 # 现在能得到章节目录的链接，但是能不能自动得到每一章的具体页数，而不是辛辛苦苦找来找去
 # 能不能自动无限延长，如果Error，就说明这一章结束了
@@ -93,34 +96,48 @@ def get_url_pages(url_chapter):
 
 def download_chapter(url_chapter, chapter_name):
     try:
-        for page_num, url_page in enumerate(get_url_pages(url_chapter)):
-            logging.debug(f"trying to download {url_page}")
-            download_page(url_page, chapter_name, page_num)
+        for page_num, url_page in enumerate(get_url_pages(url_chapter),start=1):
+            file_path = Path(f"{COMIC_NAME}/{chapter_name}/{page_num:03d}.jpg")
+            if file_path.exists():
+                logging.info(f"{file_path} already exists, skip")
+            else:
+                logging.info(f"trying to download {url_page},{chapter_name}:{page_num}")
+                download_page(url_page, chapter_name, page_num)
     except Exception as e:
-        logging.debug(e)
+        logging.info(e)
+        # 我写这段代码，是无心插柳，
+        # 没想到完美地解决了一个意想不到地bug,那就是，即使遇到下载失败，程序也不会停止
         pass
+
 
 def download_page(url_page, chapter_name, page_num):
     r = get_r(url_page)
     img = r.html.find("#mhxxBimg > p:nth-child(1) > a:nth-child(1) > img:nth-child(1)")[0]
     # 可以检查元素，然后复制CSS选择器来得到
     # print(img)
-    img_url = img.attrs['src']
-    r = get_r(img_url)
-    img_data = r.html.raw_html
-    save_img_to(img_data, chapter_name, page_num)
+    try:
+        img_url = img.attrs['src']
+        r = get_r(img_url)
+    except:
+        logging.info(f"fail to get img src: {url_page}, {chapter_name}, {chapter_name}")
+    try:
+        img_data = r.html.raw_html
+    except:
+        logging.info(f"fail to get raw data: {url_page}, {chapter_name}, {chapter_name}")
+    try:
+        save_img_to(img_data, chapter_name, page_num)
+    except:
+        logging.info(f"fail to save: {url_page}, {chapter_name}, {chapter_name}")
 
 def save_img_to(img_data, chapter_name, page_num):
     dir_path = Path(f"{COMIC_NAME}/{chapter_name}")
     file_path = Path(f"{COMIC_NAME}/{chapter_name}/{page_num:03d}.jpg")
     dir_path.mkdir(exist_ok=True, parents=True)
-    file_path.touch(exist_ok=True)
+    file_path.touch(exist_ok=False)
     file_path.write_bytes(img_data)
-    logging.debug(f"save to {file_path}")
+    logging.info(f"save to {file_path}")
     logging.info(f"sleeping....")
     time.sleep(SLEEP_SEC)
-
-
 
 
 
@@ -135,17 +152,12 @@ def download_comic():
 
 
 
-# with open('index.html') as f:
-#     doc = f.read()
+if '__main__' == __name__:
+    download_comic()
+    # get_chapters_url()
 
-# from requests_html import HTML
+    # print(ChapterNameTable)
 
-# html = HTML(html=doc)
-
-
-
-
-download_comic()
     
 
 
@@ -156,7 +168,6 @@ download_comic()
 # 学了requests-html库，还有pathlib的用法，以及如何使用pytest,包括调教spacemacs,所以才花了很多时间
 # 我需要关心的细节是什么？ pytest首先是如何使用，如何调用，其次是发现与匹配，会发现什么样的文件文件中的哪些函数
 
+# 现在还有一个问题，尾大不掉，代码已经很多了，我必须编写一个测试文件，不然真的不行了
 
-
-
-# 现在还有一个问题，尾大不掉，代码已经很多了，我必须编写一个测试文件，不然真的不行了。
+# 好，现在有一个问题，我们成功地下载了一部分内容，如何增量下载，第二次把第一次成功地部分忽略掉，直接下载没有下载地部分？
