@@ -24,7 +24,7 @@ def parse_soup_content(soup: BeautifulSoup):
 
 
 def parse_soup_text(soup):
-    res = soup.find(id=re.compile('content')).text
+    res = soup.find(id=re.compile('content|body|text')).text
     logging.debug(f"download text: {res[0:10]}")
     return res
 
@@ -42,7 +42,7 @@ def get_soup(url):
 
 # 跟漫画不一样，漫画必须分集存放，不然根本没法看， 小说则相反，必须把不同章节整合成一本。
 # 不要急着做抽象，不得不抽象时，才抽象，过早优化时万恶之源
-
+# 隐藏复杂性，如何才能更好地分割复杂性，然后隐藏到不同地模块中呢？值得思考
 
 def download_url(base_url, chapter_url):
     url = base_url + "/" + chapter_url 
