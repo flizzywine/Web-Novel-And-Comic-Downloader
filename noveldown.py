@@ -1,72 +1,104 @@
-import requests
-from bs4 import BeautifulSoup
-import re
-from typing import List, Dict
+import requests_html
+
+import json
 import logging
 import sys
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-TO_DOWNLOAD: List = []
-NOVEL_CONTENT_URL = 'http://www.shuquge.com/txt/293/index.html'
-BOOK_NAME = None
-DECODE = ['gbk', 'utf-8']
-
-def parse_soup_content(soup: BeautifulSoup):
-    global TO_DOWNLOAD, BOOK_NAME
-    # soup = BeautifulSoup(f, 'html.parser')
-    BOOK_NAME = soup.find("title").text
-    ele = soup.find("div", class_="listmain")
-    items = ele.find_all("a")
-    for item in items:
-        url = item['href']
-        title = item.text
-        TO_DOWNLOAD.append((url, title))
-        logging.debug(f"append {url},{title}")
+from requests_html import HTMLSession
+import random
+import os
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 
-def parse_soup_text(soup):
-    res = soup.find(id=re.compile('content|body|text')).text
-    logging.debug(f"download text: {res[0:10]}")
-    return res
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
-def get_soup(url):
-    r = requests.get(url, timeout=5)
-    for decode_method in DECODE:
-        try:
-            r_text = r.text.encode("latin1").decode(decode_method)
-        except UnicodeDecodeError:
-            continue
-        else:
-            break
-    soup = BeautifulSoup(r_text, 'html.parser')
-    return soup
+class BookDownloader():
+    book_url = "https://www.chinesezj.net/chinesezj/28/28143/"
+    book_name = 'xxx'
+    contents_selector = '.list-charts'
+    text_selector = '.content-ext'
+    contents = []
+    last_downloaded_chapter = 0
+    USE_AGENTS = False
 
-# 跟漫画不一样，漫画必须分集存放，不然根本没法看， 小说则相反，必须把不同章节整合成一本。
-# 不要急着做抽象，不得不抽象时，才抽象，过早优化时万恶之源
-# 隐藏复杂性，如何才能更好地分割复杂性，然后隐藏到不同地模块中呢？值得思考
+    def __init__(self):
+        self.session = HTMLSession()
+        # if self.USE_AGENTS:
+        with open('user-agents.json') as f:
+            self.user_agents_list = json.load(f)['user-agents']
 
-def download_url(base_url, chapter_url):
-    url = base_url + "/" + chapter_url 
-    logging.debug(f"dealing {url}")
-    soup = get_soup(url)
-    return parse_soup_text(soup)
+    def get_r(self, url):
+        user_agent = random.choice(self.user_agents_list)
+        header = {"user-agent": requests_html.user_agent()}
+        # r = self.session.get(url=url, headers=header)
+        r = self.session.get(url, verify=False, headers=header)
+        return r
 
+    def get_contents(self):
+        r = self.get_r(self.book_url)
+        lanmu = r.html.find(self.contents_selector, first=True)
+        self.book_name = r.html.find("title", first=True).text
+        contents = [(item.attrs['href'], item.text) for item in lanmu.find("a")]
+        for l, t in contents:
+            for link in lanmu.absolute_links:
+                if link.endswith(l):
+                    self.contents.append((link, t))
+                    break
+                
+        logging.info(f"book name: {self.book_name}")
+        logging.info(f"contents: {self.contents[:10]}")
 
-def download_book():
-    base_url = "/".join(NOVEL_CONTENT_URL.split("/")[:-1])
-    soup = get_soup(NOVEL_CONTENT_URL)
-    parse_soup_content(soup)
-    with open(BOOK_NAME+".txt", "w") as f:
-        for chapter_url, title in TO_DOWNLOAD:
-            text = download_url(base_url, chapter_url)
-            f.write(title+"\n\n")
-            f.write(text)
-
-    logging.info(f"Task {BOOK_NAME} Done!")
-
-download_book()
+    def get_text(self, chapter_url):
+        r = self.get_r(chapter_url)
+        text = "\n".join([item.text for item in r.html.find(self.text_selector)])
+        logging.info(f"text: {text[:20]}")
+        return  text
 
 
 
 
+    def save_bookmark(self):
+        with open('fail.log', 'a') as f:
+            f.write(f"{self.book_name}:{self.last_downloaded_chapter}\n")
+            logging.info(f"save bookmark {self.last_downloaded_chapter}")
 
+    def continue_download(self):
+        with open('fail.log','r') as f:
+            for line in f:
+                name, index = line.split(":")
+                if name == self.book_name:
+                    self.last_downloaded_chapter = int(index)
+                    return
+            # raise "No bookmark"
+
+
+
+
+
+    def download_book(self):
+        self.get_contents()
+        if os.path.exists('fail.log'):
+            self.continue_download()
+
+        with  open(self.book_name+".txt", 'a') as f:
+            try:
+                for chapter_url, chapter_title in self.contents[self.last_downloaded_chapter:]:
+                    logging.info(f"downloading {chapter_url}, {chapter_title}")
+                    chapter_text = self.get_text(chapter_url)
+                    f.write(f"\n\n{chapter_title}\n\n")
+                    f.write(chapter_text)
+                    self.last_downloaded_chapter += 1
+                logging.info("DONE!")
+                os.remove("fail.log")
+            except Exception as e:
+                print(e)
+                self.save_bookmark()
+                raise Exception("break download")
+
+            
+
+
+downloader = BookDownloader()
+
+downloader.download_book()
 

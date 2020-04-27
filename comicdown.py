@@ -20,18 +20,21 @@ import requests_html
 from requests_html import HTMLSession
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-COMIC_URL = "https://www.caomeng.cc/neihanmanhua/370.html"
-CHAPTER_SELECTOR = "#sortWrap"
-PAGE_SELECTOR = "#mhxxBimg > p:nth-child(1) > a:nth-child(1) > img:nth-child(1)"
+COMIC_URL = "https://manhua.fzdm.com/39"
+CHAPTER_SELECTOR = "#content"
+PAGE_SELECTOR = "#mhpic"
+
+def transformer(index, base_url):
+    return f"{base_url}index_{index}.html"
+
 COMIC_NAME = '默认漫画名'
 ChapterNameTable: Dict[str, str] = dict()
-SLEEP_SEC = 5
+SLEEP_SEC = 0.5
 session = HTMLSession()
 USER_AGENT_LIST = None
 
 with open('user-agents.json') as f:
     USER_AGENT_LIST = json.load(f)['user-agents']
-    
 
 def get_r(url):
     user_agent = random.choice(USER_AGENT_LIST)
@@ -43,7 +46,6 @@ def get_chapters_url():
     r = get_r(COMIC_URL)
     lanmu = r.html.find(CHAPTER_SELECTOR, first=True)
     links_and_titles = [(item.attrs['href'], item.attrs['title']) for item in lanmu.find("a")]
-    
     abs_links = lanmu.absolute_links
     for abs_link in abs_links:
         for link, title in links_and_titles:
@@ -58,17 +60,14 @@ def get_chapters_url():
 
 
 
-def get_url_pages(url_chapter):
+def get_pages_url(url_chapter):
     base = ".".join(url_chapter.split(".")[:-1])
-    for i in range(1, 100):
-        if i == 1:
-            yield url_chapter
-        else:
-            yield f"{base}_{i}.html"
+    for i in range(1,100):
+        return transformer(i, base)
 
 def download_chapter(url_chapter, chapter_name):
     try:
-        for page_num, url_page in enumerate(get_url_pages(url_chapter),start=1):
+        for page_num, url_page in enumerate(get_pages_url(url_chapter),start=1):
             file_path = Path(f"{COMIC_NAME}/{chapter_name}/{page_num:03d}.jpg")
             if file_path.exists():
                 logging.info(f"{file_path} already exists, skip")
@@ -86,11 +85,11 @@ def download_chapter(url_chapter, chapter_name):
 def download_page(url_page, chapter_name, page_num):
     r = get_r(url_page)
     try:
-        img = r.html.find(PAGE_SELECTOR)[0]
+        img = r.html.find(PAGE_SELECTOR, first=True)
     except Exception as e:
         # 我之前看到的调试原则，把错误控制在最小范围内
         # 这一段的错误是因为要求的page_num 太大了，所以得不到任何元素
-        # 我翻了个错，没有原地控制住错误, 在get_url_pages里的错误，被传入了这里，不利于错误的定位
+        # 我翻了个错，没有原地控制住错误, 在get_pages_url里的错误，被传入了这里，不利于错误的定位
         # 因为我是作者，所以我知道怎么找，如果换个人来，就直接懵逼了, 最好写一个中间件，判断有没有超出，
         raise Exception(f"fail to get img ele: {e}")
     # 可以检查元素，然后复制CSS选择器来得到
