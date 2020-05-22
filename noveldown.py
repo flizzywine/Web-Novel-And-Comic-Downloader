@@ -10,6 +10,7 @@ from threading import Thread
 from queue import Queue
 import pickle
 import sqlite3
+import time
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 
@@ -38,15 +39,10 @@ class BookDownloader():
         r = self.session.get(url, headers=header)
         return r
 
-    def get_book_name(self):
-        r = self.get_r(self.book_url)
-        self.book_name = r.html.find("title", first=True).text.split()[0]
-
-
-
     def get_chapters_from_web(self):
         r = self.get_r(self.book_url)
         lanmu = r.html.find(self.chapters_selector, first=True)
+        self.book_name = r.html.find("title", first=True).text.split()[0]
         chapters = [(item.attrs['href'], item.text) for item in lanmu.find("a")]
         
         # 因为得到的href不一定是相对 URL,可能是绝对 URL,所以需要检查一下
@@ -68,17 +64,21 @@ class BookDownloader():
         logging.info(f"book name: {self.book_name}")
         logging.info(f"chapters: {self.chapters[:10]}")
 
+        write_data = (self.book_url,
+                      self.book_name,
+                      sqlite3.Binary(pickle.dumps(self.chapters)),
+                      sqlite3.Binary(pickle.dumps(self.chapters)), # this is queue 
+                      sqlite3.Binary(pickle.dumps((self.chapters_selector, self.text_selector)))
+                      )
+      
+        self.c.execute('insert into books (url, name, chapters, queue, selectors) values(?,?,?,?,?)',
+                       write_data)
+        self.conn.commit()
+
     def get_text(self, chapter_url, title):
-        # try:
         r = self.get_r(chapter_url)
         text = "\n".join([item.text for item in r.html.find(self.text_selector)])
         logging.info(f"text: {text[:20]}")
-        # except:
-        #     self.queue.put((chapter_url, title))
-        # else:
-        #     if text == '':
-        #         self.queue.put((chapter_url, title))
-
         return text
 
     def map_download(self):
@@ -95,9 +95,10 @@ class BookDownloader():
         with open(self.book_name+'.txt', 'w') as f:
             for url, title in self.chapters:
                 with open(title+'.txt', 'r') as part:
+                    f.write('\n\n'+title+'\n\n')
                     f.write(part.read())
-                # os.remove(title+'.txt')
-                logging.info(f'merge {title}')
+                os.remove(title+'.txt')
+                logging.info(f'merged {title}')
         logging.info(f'{self.book_name} DOWNLOADED!')
 
 
@@ -106,66 +107,49 @@ class BookDownloader():
         while not self.queue.empty():
             chapter_url, title = self.queue.get()
             text = self.get_text(chapter_url, title)
-            with open(title+'.txt', 'w') as f:
-                f.write(title)
-                f.write('\n\n')
-                f.write(text)
-                f.write('\n\n')
-            logging.info(f'{title} downloaded!')
+            if text == '':
+                self.n_fail_times += max(self.n_fail_times+1, 4)
+                
+                self.queue.put((chapter_url, title))
+                logging.info(f"{title} get empty text")
+                time.sleep(2**self.n_fail_times)
+            else:
+                with open(title+'.txt', 'w') as f:
+                    f.write(text)
+                logging.info(f'{title} downloaded!')
 
     def save_download_record(self):
-        chs = sqlite3.Binary(pickle.dumps(self.chapters))
+        
         queue_list = []
         while not self.queue.empty():
             queue_list.append(self.queue.get())
         
         que = sqlite3.Binary(pickle.dumps(queue_list))
-        conn = sqlite3.connect('shelf.db')
-        c = conn.cursor()
-        c.execute(f'''CREATE TABLE IF NOT EXISTS books
-           (id INTEGER PRIMARY KEY  AUTOINCREMENT,
-           name           TEXT    NOT NULL UNIQUE,
-           chapters       BLOB,
-           queue          BLOB);''')
 
-        c.execute("select * from books where name=?", (self.book_name, ))
-        if len(c.fetchall()) == 0:
-            c.execute("insert into books (name, chapters, queue) values (?,?,?)", (self.book_name, chs, que))
-            logging.info(f"insert to db {self.book_name}")
-        else:
-            c.execute("update books set chapters = ? , queue = ? where name = ?", (chs, que, self.book_name))
-            logging.info(f"update db {self.book_name}")
-        conn.commit()
-        conn.close()
+        self.c.execute("update books set queue=? where url=?", (que, self.book_url))
+        self.conn.commit()
+        logging.info(f"save queu to db len:{len(queue_list)}")
 
     def get_chapters_info(self):
-        conn = sqlite3.connect('shelf.db')
-        c = conn.cursor()
-        c.execute(f'''CREATE TABLE IF NOT EXISTS books
-           (id INTEGER PRIMARY KEY  AUTOINCREMENT,
-           name           TEXT    NOT NULL UNIQUE,
-           chapters       BLOB,
-           queue          BLOB);''')
-        c.execute("select * from books where name=?", (self.book_name, ))
-        if len(c.fetchall()) == 0:
-            conn.commit()
-            conn.close()
+        self.c.execute("select * from books where url=?", (self.book_url, ))
+        if len(self.c.fetchall()) == 0:
             logging.info("get chapters from web")
             self.get_chapters_from_web()
         else:
-            c.execute("select chapters, queue from books where name=?", (self.book_name, ))
-            chs, que = c.fetchone()
+            self.c.execute("select name, chapters, queue, selectors from books where url=?", (self.book_url, ))
+            name, chs, que, selectors = self.c.fetchone()
+            self.conn.commit()
+            self.book_name = name
             self.chapters = pickle.loads(chs)
+            self.chapters_selector, self.text_selector = pickle.loads(selectors)
             queue_list = pickle.loads(que)
+            logging.info("get chapters from db")
+            logging.info(f"get queue from db len:{len(queue_list)}")
             while len(queue_list) > 0:
                 self.queue.put(queue_list.pop(0))
-            # self.queue = pickle.loads(que)
-            logging.info("get chapters from db: {self.chapters}, {self.queue}")
-            conn.commit()
-            conn.close()
 
 
-    def download_book(self, book_url, chapters_selector, text_selector, ignore_n_chapters=12, n_threads=2):
+    def download_book(self, book_url, chapters_selector='#list', text_selector='#content', ignore_n_chapters=12, n_threads=2):
         self.book_url = book_url
         self.book_name = None
         self.chapters_selector = chapters_selector
@@ -174,13 +158,21 @@ class BookDownloader():
         self.n_threads = n_threads
         self.chapters = []
         self.last_downloaded_chapter = 0
+        self.n_fail_times = 0
         self.queue = Queue()
+        self.conn = sqlite3.connect('shelf.db')
+        self.c = self.conn.cursor()
+        self.c.execute(f'''CREATE TABLE IF NOT EXISTS books
+           (id INTEGER PRIMARY KEY  AUTOINCREMENT,
+           url           TEXT    NOT NULL UNIQUE,
+           name          TEXT,
+           selectors      BLOB,
+           chapters       BLOB,
+           queue          BLOB
+           all_text      TEXT);''')
+     
 
-
-        self.get_book_name()
         self.get_chapters_info()
-        
-        
         try:
             self.map_download()
             self.reduce_download()
@@ -188,14 +180,14 @@ class BookDownloader():
             
             # 为了做到断点续传, 需要维护两个信息, 剩余未下载的章节, 章节间的顺序
             self.save_download_record()
+            self.conn.close()
+        else:
+            self.conn.close()
 
-        
-
-            
 
 if __name__ == '__main__':
     downloader = BookDownloader()
-    downloader.download_book('https://www.ibiquge.net/48_48106/', "#list",  '#content')
+    downloader.download_book('https://www.ibiquge.net/48_48106/', chapters_selector="#list",  text_selector='#content')
 
     
 
