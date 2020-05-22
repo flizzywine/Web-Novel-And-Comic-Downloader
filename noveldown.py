@@ -115,7 +115,11 @@ class BookDownloader():
 
     def save_download_record(self):
         chs = sqlite3.Binary(pickle.dumps(self.chapters))
-        que = sqlite3.Binary(pickle.dumps(self.queue))
+        queue_list = []
+        while not self.queue.empty():
+            queue_list.append(self.queue.get())
+        
+        que = sqlite3.Binary(pickle.dumps(queue_list))
         conn = sqlite3.connect('shelf.db')
         c = conn.cursor()
         c.execute(f'''CREATE TABLE IF NOT EXISTS books
@@ -152,7 +156,10 @@ class BookDownloader():
             c.execute("select chapters, queue from books where name=?", (self.book_name, ))
             chs, que = c.fetchone()
             self.chapters = pickle.loads(chs)
-            self.queue = pickle.loads(que)
+            queue_list = pickle.loads(que)
+            while len(queue_list) > 0:
+                self.queue.put(queue_list.pop(0))
+            # self.queue = pickle.loads(que)
             logging.info("get chapters from db: {self.chapters}, {self.queue}")
             conn.commit()
             conn.close()
@@ -176,12 +183,13 @@ class BookDownloader():
         
         try:
             self.map_download()
+            self.reduce_download()
+        except KeyboardInterrupt:
             
-        except Exception:
             # 为了做到断点续传, 需要维护两个信息, 剩余未下载的章节, 章节间的顺序
             self.save_download_record()
 
-        self.reduce_download()
+        
 
             
 
