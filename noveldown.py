@@ -14,7 +14,7 @@ import time
 import argparse
 from urllib.parse import urlparse
 from progressbar import ProgressBar
-
+DEBUG = False
 logging.basicConfig(stream=sys.stdout, level=logging.WARN)
 
 
@@ -61,7 +61,9 @@ class BookDownloader():
         # 忽略最开始的若干章预览章节
         self.chapters = self.chapters[self.n_ignore_first:]
         # 测试用, 只截取少量 chapters
-        # self.chapters = self.chapters[:30]
+        global DEBUG
+        if DEBUG:
+            self.chapters = self.chapters[:15]
         for chapter in self.chapters:
             self.queue.put(chapter)
         # self.download_record = {url: False for url, title in self.chapters}
@@ -90,12 +92,20 @@ class BookDownloader():
 
         for i in range(self.n_threads):
             t = Thread(target=self.thread_job)
+            t.setDaemon(True)
             t.start()
             threads.append(t)
-        self.progress()
+        for thread in threads:
+            thread.join()
 
-        for t in threads:
-            t.join()
+        # self.check_all_downloaded()
+
+    def check_all_downloaded(self):
+        for chapter in self.chapters:
+            if not os.path.exists(chapter[1]+'.txt'):
+                self.queue.put(chapter)
+        self.map_download()
+
 
     def reduce_download(self):
         with open(self.book_name+'.txt', 'w') as f:
@@ -105,13 +115,17 @@ class BookDownloader():
                     f.write(part.read())
                 os.remove(title+'.txt')
                 logging.info(f'merged {title}')
+                
         logging.info(f'{self.book_name} DOWNLOADED!')
+        self.progressbar.finish()
 
     def progress(self):
-        for i in range(len(self.chapters)):
+        while not self.queue.empty():
             cur_progress = len(self.chapters) - self.queue.qsize()
             self.progressbar.update(cur_progress/len(self.chapters)*100)
-            time.sleep(0.2)
+            # time.sleep(0.2)
+        self.progressbar.finish()
+        return
 
 
     def thread_job(self):
@@ -122,15 +136,17 @@ class BookDownloader():
             text = self.get_text(chapter_url, title)
             if text == '':
                 n_fail_times += 1
-                if n_fail_times >= 4:
-                    n_fail_times = 0
+                if n_fail_times > 5:
+                    n_fail_times = 1
                 
                 self.queue.put((chapter_url, title))
                 logging.info(f"{title} get empty text")
-                time.sleep(2**n_fail_times)
+                time.sleep(2)
             else:
                 with open(title+'.txt', 'w') as f:
                     f.write(text)
+                time.sleep(0.5)
+                self.progressbar.update((len(self.chapters)-self.queue.qsize())/len(self.chapters)*100)
                 logging.info(f'{title} downloaded!')
 
     def save_download_record(self):
@@ -220,6 +236,7 @@ class BookDownloader():
         self.get_chapters_info()
         try:
             self.map_download()
+            self.check_all_downloaded()
             self.reduce_download()
         except KeyboardInterrupt:
             # 为了做到断点续传, 需要维护两个信息, 剩余未下载的章节, 章节间的顺序

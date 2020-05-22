@@ -9,19 +9,17 @@
 
 指定元素选择器:
 
-`python noveldown.py book_url --chapters_selector #list --text_selector #content`
+`python noveldown.py book_url --chapters_selector '#list' --text_selector '#content'`
 
 ## 漫画下载器
 
 `python comicdown.py comic_url`
 
-## 特色功能
+## 特色
 ### 简便
 最少只需要输入一个URL，起始URL即可。
 ### 避开反爬
-通过改变User-Agent，降低GET频率来一定程度上避开反爬
-### 错误恢复
-发生错误直接跳过
+通过改变User-Agent，降低GET频率来一定程度上避开反爬, 重新下载空白章节
 ### 增量下载
 中断后不需要重新下载
 ### 自动命名
