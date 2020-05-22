@@ -42,7 +42,8 @@ class Tests(TestCase):
             self.conn.commit()
         except Exception:
             pass
-
+        
+    @unittest.skip
     def test_pickle_binary(self):
         a = 1
         b = 2
@@ -51,6 +52,34 @@ class Tests(TestCase):
         self.c.execute("insert into books (url) values(?)", ('array', ))
         self.c.execute("update books set chapters=?, selectors=?, queue=?", [b for b in bdata])
         self.conn.commit()
+
+    @unittest.skip
+    def test_selector_config(self):
+        self.c.execute(f'''CREATE TABLE IF NOT EXISTS sites
+           (id INTEGER PRIMARY KEY  AUTOINCREMENT,
+           url           TEXT    NOT NULL UNIQUE,
+           selectors      BLOB,
+           n_ignore_first   INTEGER);''')
+        url = 'https://www.ibiquge.net/'
+        selectors = sqlite3.Binary(dumps(('#list','#content')))
+        n_ignore_first = 12
+        self.c.execute("insert into sites (url, selectors, n_ignore_first) values(?,?,?)",
+                       (url, selectors, n_ignore_first))
+        self.conn.commit()
+
+    def test_site_url(self):
+        from urllib.parse import urlparse
+        book_url = 'https://www.ibiquge.net/48_48106/'
+        site_url = urlparse(book_url).netloc
+        self.assertEqual(site_url, 'www.ibiquge.net')
+
+    def test_find_no_site(self):
+        site_url = 'www.ibiquge.net'
+
+        self.c.execute("select * from sites where url=?", (site_url, ))
+        print(self.c.fetchall())
+        print(self.c.fetchall())
+        
 
 
 

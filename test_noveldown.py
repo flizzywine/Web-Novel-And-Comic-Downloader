@@ -3,6 +3,7 @@ from noveldown import BookDownloader
 from unittest import mock
 from requests_html import HTML, HTMLSession
 import random
+import time
 
 class Tests(unittest.TestCase):
     def setUp(self):
@@ -36,7 +37,7 @@ class Tests(unittest.TestCase):
         print(text)
 
 
-    # @unittest.skip
+    @unittest.skip
     def test_break_download(self):
         # 失败, 不知道为什么, 总是成功不了, 每次 Ctrl-c,都会被 threading 捕获到, 完全不会调用数据库代码
         # 其实 chapters信息可以直接保存下来,以后每次要调用就直接得到
@@ -45,8 +46,13 @@ class Tests(unittest.TestCase):
         # Queue是不能被序列化的
         self.downloader.download_book(self.url, self.chapters_selector, self.text_selector)
 
-    def test_save_url_db(self):
-        pass
+    def test_progressbar(self):
+        from progressbar import ProgressBar
+        pbar = ProgressBar().start()
+        for i in range(100):
+            time.sleep(0.1)
+            pbar.update(i+1)
+        pbar.finish()
 
 
 

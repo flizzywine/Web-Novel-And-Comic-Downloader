@@ -11,7 +11,11 @@ from queue import Queue
 import pickle
 import sqlite3
 import time
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+import argparse
+from urllib.parse import urlparse
+from progressbar import ProgressBar
+
+logging.basicConfig(stream=sys.stdout, level=logging.WARN)
 
 
 
@@ -22,7 +26,7 @@ class BookDownloader():
         self.book_name = None
         self.chapters_selector = None
         self.text_selector = None
-        self.ignore_n_chapters = 0
+        self.progressbar = ProgressBar().start()
         self.chapters = []
         self.last_downloaded_chapter = 0
         self.USE_AGENTS = False
@@ -55,9 +59,9 @@ class BookDownloader():
             self.chapters = chapters
 
         # 忽略最开始的若干章预览章节
-        self.chapters = self.chapters[self.ignore_n_chapters:]
+        self.chapters = self.chapters[self.n_ignore_first:]
         # 测试用, 只截取少量 chapters
-        self.chapters = self.chapters[:30]
+        # self.chapters = self.chapters[:30]
         for chapter in self.chapters:
             self.queue.put(chapter)
         # self.download_record = {url: False for url, title in self.chapters}
@@ -88,6 +92,8 @@ class BookDownloader():
             t = Thread(target=self.thread_job)
             t.start()
             threads.append(t)
+        self.progress()
+
         for t in threads:
             t.join()
 
@@ -101,29 +107,42 @@ class BookDownloader():
                 logging.info(f'merged {title}')
         logging.info(f'{self.book_name} DOWNLOADED!')
 
+    def progress(self):
+        for i in range(len(self.chapters)):
+            cur_progress = len(self.chapters) - self.queue.qsize()
+            self.progressbar.update(cur_progress/len(self.chapters)*100)
+            time.sleep(0.2)
 
 
     def thread_job(self):
+
+        n_fail_times = 0
         while not self.queue.empty():
             chapter_url, title = self.queue.get()
             text = self.get_text(chapter_url, title)
             if text == '':
-                self.n_fail_times += max(self.n_fail_times+1, 4)
+                n_fail_times += 1
+                if n_fail_times >= 4:
+                    n_fail_times = 0
                 
                 self.queue.put((chapter_url, title))
                 logging.info(f"{title} get empty text")
-                time.sleep(2**self.n_fail_times)
+                time.sleep(2**n_fail_times)
             else:
                 with open(title+'.txt', 'w') as f:
                     f.write(text)
                 logging.info(f'{title} downloaded!')
 
     def save_download_record(self):
-        
         queue_list = []
+        
+        # queue_copied = copy.deepcopy(self.queue)
         while not self.queue.empty():
             queue_list.append(self.queue.get())
-        
+
+        for item in queue_list:
+            self.queue.put(item)
+
         que = sqlite3.Binary(pickle.dumps(queue_list))
 
         self.c.execute("update books set queue=? where url=?", (que, self.book_url))
@@ -148,8 +167,34 @@ class BookDownloader():
             while len(queue_list) > 0:
                 self.queue.put(queue_list.pop(0))
 
+    def site_config(self):
+        """针对输入的 URL,在数据表 site 中查找对应的配置记录,
+        查不到就放弃, 如果发现未记录的网站, 并且没有手动配置, 就会报错,
+        如果有手动配置, 则更新或插入记录"""
+        
+        site_url = urlparse(self.book_url).netloc
+        
+        self.c.execute('select * from sites where url=?', (site_url,))
+        if len(self.c.fetchall()) == 0:
+            if self.chapters_selector is not None and self.text_selector is not None:
 
-    def download_book(self, book_url, chapters_selector='#list', text_selector='#content', ignore_n_chapters=12, n_threads=2):
+                self.c.execute("insert into sites (url, selecotrs, n_ignore_first) values(?,?,?)",
+                                (site_url,
+                                 sqlite3.Binary(pickle.dumps((self.chapters_selector, self.text_selector))),
+                                 self.n_ignore_first))
+            else:
+                raise Exception("Please specify selecotrs")
+        else:
+            self.c.execute('select * from sites where url=?', (site_url,))
+            id, url, selecotrs, n_ignore_first = self.c.fetchone()
+            self.chapters_selector, self.text_selector = pickle.loads(selecotrs)
+            self.n_ignore_first = n_ignore_first
+            logging.info("get site config from db")
+        
+
+
+
+    def download_book(self, book_url, chapters_selector=None, text_selector=None, ignore_n_chapters=0, n_threads=1):
         self.book_url = book_url
         self.book_name = None
         self.chapters_selector = chapters_selector
@@ -158,7 +203,6 @@ class BookDownloader():
         self.n_threads = n_threads
         self.chapters = []
         self.last_downloaded_chapter = 0
-        self.n_fail_times = 0
         self.queue = Queue()
         self.conn = sqlite3.connect('shelf.db')
         self.c = self.conn.cursor()
@@ -170,14 +214,14 @@ class BookDownloader():
            chapters       BLOB,
            queue          BLOB
            all_text      TEXT);''')
-     
+
+        self.site_config()
 
         self.get_chapters_info()
         try:
             self.map_download()
             self.reduce_download()
         except KeyboardInterrupt:
-            
             # 为了做到断点续传, 需要维护两个信息, 剩余未下载的章节, 章节间的顺序
             self.save_download_record()
             self.conn.close()
@@ -186,9 +230,16 @@ class BookDownloader():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('book_url', type=str)
+    parser.add_argument('--chapters_selector', type=str)
+    parser.add_argument('--text_selector', type=str)
+    args = parser.parse_args()
     downloader = BookDownloader()
-    downloader.download_book('https://www.ibiquge.net/48_48106/', chapters_selector="#list",  text_selector='#content')
+    # 输入 小说目录页 URL 即可
+    # 多数情况下只需要输入一个 URL 即可, 但对于某些非主流网站, 必须手动配置chapters_selector, text_selector
+    book_url = args.book_url
+    downloader.download_book(book_url)
 
-    
 
 
