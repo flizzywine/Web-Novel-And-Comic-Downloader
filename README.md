@@ -1,16 +1,19 @@
 # Web-Novel-And-Comic-Downloader
 # 网络小说与漫画下载器
-这是一个自用的Python脚本，用来从网页上直接下载一些小说和漫画。
-以后等稳定了，或许会写一个GUI版本，或者添加命令行接口，目前所有参数都通过代码配置。
+
+
 ## 小说下载器
+基本用法:
 
-到小说目录页URL，在代码中修改起始URL，运行脚本。
-`python noveldown.py`
+`python noveldown.py book_url`
 
+指定元素选择器:
+
+`python noveldown.py book_url --chapters_selector #list --text_selector #content`
 
 ## 漫画下载器
-同上。但是由于漫画网站布局差异大，需要额外配置得到章节链接的CSS选择器以及在每一页图片中匹配对应img元素的CSS规则。
-`python comicdown.py`
+
+`python comicdown.py comic_url`
 
 ## 特色功能
 ### 简便
